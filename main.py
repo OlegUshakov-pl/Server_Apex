@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import uuid
@@ -39,8 +40,9 @@ async def add_snap(snap: SnapData):
     filepath = os.path.join(UPLOAD_DIR, filename)
 
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(snap_content, f, indent=4)
+        asyncio.to_thread(
+            lambda: (open(filepath, "w", encoding="utf-8").write(json.dumps(snap_content, indent=4)))
+        )
 
         # 4. Возвращаем ответ расширению
         return {
