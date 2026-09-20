@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package snaps;
+
+message Metadata {
+  repeated string tags = 1;
+  float sentiment = 2;
+  string summary = 3;
+  string category = 4;
+}
+
+message Snap {
+  string id = 1;
+  string type = 2; // "web" or "folder"
+  string source_url = 3;
+  string thumbnail_base64 = 4;
+  string binary_data = 5;
+  Metadata metadata = 6;
+}

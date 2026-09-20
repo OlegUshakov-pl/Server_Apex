@@ -2,7 +2,9 @@
 
 ## Описание
 
-Серверный компонент системы, который принимает и хранит данные "слепков" от расширения браузера. Каждый слепок содержит информацию о странице, изображение-превью, бинарные данные и метаданные от AI.
+Серверный компонент системы, который принимает и хранит данные "слепков" от расширения браузера:
+- **Веб-страницы**: захват текста + AI-анализ
+- **Локальные папки**: анализ файлов через File System Access API
 
 ## Установка
 
@@ -40,24 +42,29 @@ python main.py
 **Ответ:**
 ```json
 {
-  "message": "Server is running. Use /api/add-snap endpoint."
+  "message": "Server is running.",
+  "endpoints": {
+    "/api/add-snap": "Сохраняет слепок веб-страницы",
+    "/api/add-folder-snap": "Сохраняет слепок локальной папки"
+  }
 }
 ```
 
 ### POST /api/add-snap
 
-Сохраняет новый слепок на сервере.
+Сохраняет новый слепок **веб-страницы**.
 
-**Запрос:**
+**Запрос (веб-страница):**
 ```json
 {
-  "source_url": "https://example.com",
+  "source_url": "https://example.com/page",
   "thumbnail_base64": "data:image/png;base64,iVBOR...",
   "binary_data": "{\"type\": \"text\", \"content\": \"Привет\"}",
   "metadata_ai": {
-    "model_version": "v1.0",
-    "confidence": 0.95,
-    "tags": ["news", "article"]
+    "tags": ["news", "article"],
+    "sentiment": 0.8,
+    "summary": "Краткое описание...",
+    "category": "tech"
   }
 }
 ```
@@ -67,15 +74,40 @@ python main.py
 {
   "status": "success",
   "snap_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "message": "Слепок успешно сохранен на сервере."
+  "message": "Веб-слепок успешно сохранен на сервере."
 }
 ```
 
-**Ошибка:**
+### POST /api/add-folder-snap
+
+Сохраняет новый слепок **локальной папки**.
+
+**Запрос (папка):**
 ```json
 {
-  "status": "error",
-  "message": "Ошибка сохранения: ..."
+  "source_url": "file:///C:/Users/You/Documents/my-folder",
+  "thumbnail_base64": "",
+  "binary_data": "0101...",
+  "metadata_ai": {
+    "tags": ["folder", "documents"],
+    "sentiment": 0.5,
+    "summary": "Папка с документами",
+    "category": "other",
+    "files": [
+      "report.pdf",
+      "notes.txt",
+      "budget.xlsx"
+    ]
+  }
+}
+```
+
+**Успешный ответ:**
+```json
+{
+  "status": "success",
+  "snap_id": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
+  "message": "Слепок папки успешно сохранен на сервере."
 }
 ```
 
@@ -83,17 +115,41 @@ python main.py
 
 Каждый слепок сохраняется в отдельный JSON-файл с именем `uuid.json` в папке `uploads/`.
 
-**Структура файла:**
+### Веб-страница:
 ```json
 {
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "url": "https://example.com",
+  "type": "web",
+  "url": "https://example.com/page",
   "thumbnail": "data:image/png;base64,...",
-  "binary_data": "...",
+  "binary_data": "{\"type\": \"text\", ...}",
   "metadata": {
-    "model_version": "v1.0",
-    "confidence": 0.95,
-    "tags": ["news", "article"]
+    "tags": ["news", "article"],
+    "sentiment": 0.8,
+    "summary": "Краткое описание...",
+    "category": "tech"
+  }
+}
+```
+
+### Локальная папка:
+```json
+{
+  "id": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
+  "type": "folder",
+  "url": "file:///C:/Users/You/Documents/my-folder",
+  "thumbnail": "",
+  "binary_data": "0101...",
+  "metadata": {
+    "tags": ["folder", "documents"],
+    "sentiment": 0.5,
+    "summary": "Папка с документами",
+    "category": "other",
+    "files": [
+      "report.pdf",
+      "notes.txt",
+      "budget.xlsx"
+    ]
   }
 }
 ```
@@ -122,6 +178,13 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```python
 UPLOAD_DIR = "my_snapshots"  # вместо "uploads"
 ```
+
+## Поддерживаемые типы слепков
+
+| Тип | Endpoint | Пример URL |
+|-----|----------|------------|
+| Веб-страница | `/api/add-snap` | `https://example.com/page` |
+| Локальная папка | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
 
 ## Лицензия
 
