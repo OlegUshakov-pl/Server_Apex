@@ -2,9 +2,9 @@ import asyncio
 import json
 import os
 import uuid
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 app = FastAPI()
 
@@ -49,11 +49,13 @@ async def add_snap(snap: WebSnapData):
         filename = f"{file_id}.json"
         filepath = os.path.join(UPLOAD_DIR, filename)
 
-        asyncio.to_thread(
-            lambda: (open(filepath, "w", encoding="utf-8").write(json.dumps(snap_content, indent=4)))
+        await asyncio.to_thread(
+            lambda f=filepath, d=snap_content: (
+                open(f, "w", encoding="utf-8").write(json.dumps(d, indent=4))
+            )
         )
 
-        # 4. Возвращаем ответ расширению
+        # 4. Возвращаем ответ расши-extension
         return {
             "status": "success",
             "snap_id": file_id,
@@ -71,7 +73,7 @@ async def add_folder_snap(snap: FolderSnapData):
         # 1. Создаем уникальное имя файла (UUID)
         file_id = str(uuid.uuid4())
 
-        # 2. Формируем структуру данных для сохранения
+        # 2. Формиаем структура данных для сохранения
         snap_content = {
             "id": file_id,
             "type": "folder",
@@ -85,11 +87,13 @@ async def add_folder_snap(snap: FolderSnapData):
         filename = f"{file_id}.json"
         filepath = os.path.join(UPLOAD_DIR, filename)
 
-        asyncio.to_thread(
-            lambda: (open(filepath, "w", encoding="utf-8").write(json.dumps(snap_content, indent=4)))
+        await asyncio.to_thread(
+            lambda f=filepath, d=snap_content: (
+                open(f, "w", encoding="utf-8").write(json.dumps(d, indent=4))
+            )
         )
 
-        # 4. Возвращаем ответ расширению
+        # 4. Возвращаем ответ расши-extension
         return {
             "status": "success",
             "snap_id": file_id,
@@ -109,8 +113,3 @@ def root():
             "/api/add-folder-snap": "Сохраняет слепок локальной папки"
         }
     }
-
-# Путь для проверки: http://localhost:8000/
-@app.get("/")
-async def root():
-    return {"message": "Server is running. Use /api/add-snap endpoint."}
