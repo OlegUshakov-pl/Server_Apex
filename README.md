@@ -12,11 +12,12 @@
 
 - Python 3.8+
 - pip
+- SQLite с FTS5 (входит в стандартную сборку Python)
 
 ### Установка зависимостей
 
 ```bash
-pip install fastapi uvicorn pydantic
+pip install -r requirements.txt
 ```
 
 ### Запуск сервера
@@ -45,7 +46,10 @@ python main.py
   "message": "Server is running.",
   "endpoints": {
     "/api/add-snap": "Сохраняет слепок веб-страницы",
-    "/api/add-folder-snap": "Сохраняет слепок локальной папки"
+    "/api/add-folder-snap": "Сохраняет слепок локальной папки",
+    "/api/add-snapshot": "Сохраняет произвольный слепок (ApexShot)",
+    "/api/search?q=...": "FTS5-поиск по слепкам",
+    "/api/snaps/{snap_id}": "Получить слепок по id"
   }
 }
 ```
@@ -113,7 +117,9 @@ python main.py
 
 ## Структура данных
 
-Каждый слепок сохраняется в отдельный JSON-файл с именем `uuid.json` в папке `uploads/`.
+Каждый слепок сохраняется в отдельный JSON-файл с именем `uuid.json` в папке `uploads/`
+и дублируется в SQLite (`snaps.db`): таблица `snaps` + FTS5-индекс `snaps_fts` по полям
+`snap_id, url, search_text`.
 
 ### Веб-страница:
 ```json
@@ -154,11 +160,35 @@ python main.py
 }
 ```
 
+### POST /api/add-snapshot
+
+Принимает произвольный JSON (сюда шлёт кнопка Send из ApexShot — поле Server URL).
+
+**Запрос:** любой JSON-объект слепка ApexShot (`id`, `directory`, `title`, `summary`, `tags`, …).
+
+**Успешный ответ:**
+```json
+{
+  "status": "success",
+  "snap_id": "snap-...",
+  "message": "Слепок сохранен на сервере."
+}
+```
+
+### GET /api/search?q=...&type=...&limit=20&offset=0
+
+FTS5-поиск по слепкам (url + текст). Без `q` — последние слепки.
+
+### GET /api/snaps/{snap_id}
+
+Получить слепок из SQLite по id.
+
 ## Структура проекта
 
 ```
 server_project/
-├── main.py          # Основной файл приложения FastAPI
+├── main.py          # Основной файл приложения FastAPI + SQLite FTS5
+├── snaps.db         # SQLite-база слепков (создаётся автоматически)
 ├── uploads/         # Папка для хранения слепков (создаётся автоматически)
 └── README.md        # Документация
 ```
@@ -185,6 +215,7 @@ UPLOAD_DIR = "my_snapshots"  # вместо "uploads"
 |-----|----------|------------|
 | Веб-страница | `/api/add-snap` | `https://example.com/page` |
 | Локальная папка | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
+| Произвольный (ApexShot) | `/api/add-snapshot` | `http://localhost:8000/api/add-snapshot` |
 
 ## Лицензия
 
