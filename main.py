@@ -1,6 +1,9 @@
 import asyncio
+import html
 import json
+import os
 import re
+import socket
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager, contextmanager
@@ -9,6 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -16,9 +20,16 @@ UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = BASE_DIR / "snaps.db"
 
+# Время запуска сервера (обновляется при старте приложения, см. lifespan)
+STARTED_AT = datetime.now(timezone.utc)
+# Сколько слепков показывать на странице статуса (остальные — только счётчиком)
+STATUS_LIMIT = 200
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global STARTED_AT
+    STARTED_AT = datetime.now(timezone.utc)
     init_db()
     yield
 
@@ -241,6 +252,148 @@ def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: 
     return {"total": total, "limit": limit, "offset": offset, "items": items}
 
 
+# ---------------------------------------------------------------- status
+def _local_ip() -> str:
+    """Локальный IP-адрес сервера."""
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except OSError:
+        return "127.0.0.1"
+
+
+def _uptime_str(since: datetime, now: datetime) -> str:
+    """Uptime в удобном формате: дни/часы/минуты."""
+    total = max(0, int((now - since).total_seconds()))
+    days, total = divmod(total, 86400)
+    hours, total = divmod(total, 3600)
+    minutes, seconds = divmod(total, 60)
+    if days:
+        return f"{days} д {hours} ч {minutes} мин"
+    if hours:
+        return f"{hours} ч {minutes} мин"
+    if minutes:
+        return f"{minutes} мин {seconds} с"
+    return f"{seconds} с"
+
+
+def _human_size(n: int | None) -> str:
+    if n is None:
+        return "—"
+    size = float(n)
+    for unit in ("Б", "КБ", "МБ", "ГБ"):
+        if size < 1024 or unit == "ГБ":
+            return f"{size:.1f} {unit}" if unit != "Б" else f"{n} Б"
+        size /= 1024
+    return f"{n} Б"
+
+
+def get_status(limit: int = STATUS_LIMIT) -> dict:
+    """Собирает данные для страницы /status и /api/status."""
+    now = datetime.now(timezone.utc)
+    with _db() as conn:
+        total = conn.execute("SELECT COUNT(*) AS c FROM snaps").fetchone()["c"]
+        rows = conn.execute(
+            "SELECT id, type, url, created_at FROM snaps"
+            " ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    items = []
+    for r in rows:
+        path = UPLOAD_DIR / f"{r['id']}.json"
+        try:
+            size = path.stat().st_size if path.is_file() else None
+        except OSError:
+            size = None
+        items.append(
+            {
+                "id": r["id"],
+                "type": r["type"],
+                "url": r["url"],
+                "created_at": r["created_at"],
+                "file_path": str(path),
+                "file_exists": size is not None,
+                "file_size": size,
+            }
+        )
+    return {
+        "status": "Running",
+        "started_at": STARTED_AT.isoformat().replace("+00:00", "Z"),
+        "uptime": _uptime_str(STARTED_AT, now),
+        "server_ip": _local_ip(),
+        "total": total,
+        "shown": len(items),
+        "items": items,
+    }
+
+
+def render_status_html(st: dict) -> str:
+    """Простая HTML-страница статуса: чистый HTML + минимальный CSS, без зависимостей."""
+    if st["total"] > st["shown"]:
+        note = f"<p>Показаны первые {st['shown']} из {st['total']}.</p>"
+    else:
+        note = ""
+    rows = []
+    for it in st["items"]:
+        mark = "OK" if it["file_exists"] else "нет файла"
+        rows.append(
+            "<tr>"
+            f"<td><code>{html.escape(str(it['id']))}</code></td>"
+            f"<td>{html.escape(str(it['url'] or '—'))}</td>"
+            f"<td>{html.escape(str(it['type'] or ''))}</td>"
+            f"<td>{html.escape(str(it['created_at']))}</td>"
+            f"<td>{_human_size(it['file_size'])}</td>"
+            f"<td><code>{html.escape(str(it['file_path']))}</code> ({mark})</td>"
+            "</tr>"
+        )
+    table = (
+        "<table><thead><tr>"
+        "<th>ID слепка</th><th>Название / URL</th><th>Тип</th>"
+        "<th>Дата создания</th><th>Размер файла</th><th>Путь к JSON-файлу</th>"
+        "</tr></thead><tbody>"
+        + ("".join(rows) if rows else '<tr><td colspan="6">Слепков пока нет.</td></tr>')
+        + "</tbody></table>"
+    )
+    return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Статус сервера — Apex snapshots</title>
+<style>
+body {{ font-family: sans-serif; max-width: 1100px; margin: 2em auto; padding: 0 1em; color: #222; }}
+.badge {{ display: inline-block; padding: 0.2em 0.8em; border-radius: 1em; color: #fff; background: #16a34a; font-weight: bold; }}
+.card {{ border: 1px solid #ddd; border-radius: 8px; padding: 1em; margin-bottom: 1em; background: #fafafa; }}
+table {{ border-collapse: collapse; width: 100%; font-size: 0.9em; }}
+th, td {{ border: 1px solid #ddd; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }}
+th {{ background: #f0f0f0; }}
+code {{ word-break: break-all; }}
+.btn {{ display: inline-block; padding: 0.5em 1em; margin-right: 0.5em; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; font-size: 1em; text-decoration: none; color: #222; }}
+.btn.danger {{ border-color: #dc2626; color: #dc2626; }}
+.btn:disabled {{ opacity: 0.5; cursor: default; }}
+</style>
+</head>
+<body>
+<h1>Статус сервера</h1>
+<div class="card">
+<p>Статус: <span class="badge">Running</span></p>
+<p>Время запуска: {html.escape(st['started_at'])}</p>
+<p>Uptime: {html.escape(st['uptime'])}</p>
+<p>IP-адрес сервера: {html.escape(st['server_ip'])}</p>
+<p>Всего слепков: {st['total']}</p>
+</div>
+<div class="card">
+<a class="btn" href="/status">&#8635; Обновить</a>
+<button class="btn" disabled title="Сервер уже запущен. Для запуска используйте start.bat">Запустить сервер</button>
+<form method="post" action="/api/shutdown" style="display:inline" onsubmit="return confirm('Остановить сервер? Страница перестанет отвечать.');">
+<button class="btn danger" type="submit">Остановить сервер</button>
+</form>
+</div>
+<h2>Слепки</h2>
+{note}
+{table}
+</body>
+</html>"""
+
+
 # ---------------------------------------------------------------- endpoints
 # Путь: http://localhost:8000/api/add-snap (веб-страницы)
 @app.post("/api/add-snap")
@@ -343,6 +496,27 @@ def search(
     return search_snaps(query=q, snap_type=type, limit=limit, offset=offset)
 
 
+# Путь: http://localhost:8000/status — HTML-страница состояния сервера
+@app.get("/status", response_class=HTMLResponse)
+def status_page():
+    return render_status_html(get_status())
+
+
+# Путь: http://localhost:8000/api/status — то же самое в JSON
+@app.get("/api/status")
+def api_status():
+    return get_status()
+
+
+@app.post("/api/shutdown")
+def shutdown():
+    """Останавливает сервер (кнопка на странице /status)."""
+    import threading
+
+    threading.Timer(0.5, lambda: os._exit(0)).start()
+    return {"status": "stopping", "message": "Сервер останавливается."}
+
+
 # Путь для проверки: http://localhost:8000/
 @app.get("/")
 def root():
@@ -354,5 +528,7 @@ def root():
             "/api/add-snapshot": "Сохраняет произвольный слепок (ApexShot)",
             "/api/search?q=...": "FTS5-поиск по слепкам",
             "/api/snaps/{snap_id}": "Получить слепок по id",
+            "/status": "HTML-страница состояния сервера",
+            "/api/status": "Состояние сервера в JSON",
         },
     }
