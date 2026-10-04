@@ -1,0 +1,16 @@
+[project]
+name = "server-apex"
+version = "0.1.0"
+description = "FastAPI сервер для хранения слепков (snapshots)"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.141",
+    "uvicorn>=0.53",
+    "pydantic>=2.13",
+]
+
+[tool.uvicorn]
+app = "main:app"
+host = "0.0.0.0"
+port = 8000

@@ -1,23 +1,29 @@
 import asyncio
 import json
-import os
 import re
 import sqlite3
 import uuid
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = BASE_DIR / "snaps.db"
 
-app = FastAPI(title="Apex snapshots server")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Apex snapshots server", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------- models
@@ -25,14 +31,14 @@ class WebSnapData(BaseModel):
     source_url: str       # URL страницы (http://...)
     thumbnail_base64: str = ""  # Фото в формате Base64
     binary_data: str = ""       # Бинарные данные
-    metadata_ai: dict = {}      # Метаданные от AI
+    metadata_ai: dict = Field(default_factory=dict)  # Метаданные от AI
 
 
 class FolderSnapData(BaseModel):
     source_url: str       # Путь к папке (file://...)
     thumbnail_base64: str = ""  # Обычно пусто для папок
     binary_data: str = ""       # Бинарные данные (hash пути)
-    metadata_ai: dict = {}      # Метаданные от AI (список файлов)
+    metadata_ai: dict = Field(default_factory=dict)  # Метаданные от AI (список файлов)
 
 
 # ---------------------------------------------------------------- sqlite FTS5
@@ -56,7 +62,7 @@ USING fts5(
 );
 """
 
-_fts_ok: Optional[bool] = None
+_fts_ok: bool | None = None
 
 
 def now_iso() -> str:
@@ -71,7 +77,7 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-def fts_available(conn: Optional[sqlite3.Connection] = None) -> bool:
+def fts_available(conn: sqlite3.Connection | None = None) -> bool:
     global _fts_ok
     if _fts_ok is not None:
         return _fts_ok
@@ -123,7 +129,7 @@ def save_snap(
     binary_data: str,
     metadata: dict,
     search_text: str = "",
-    file_id: Optional[str] = None,
+    file_id: str | None = None,
 ) -> str:
     file_id = file_id or str(uuid.uuid4())
     metadata = metadata if isinstance(metadata, dict) else {}
@@ -172,7 +178,7 @@ def save_snap(
     return file_id
 
 
-def get_snap(snap_id: str) -> Optional[dict]:
+def get_snap(snap_id: str) -> dict | None:
     with _db() as conn:
         row = conn.execute("SELECT * FROM snaps WHERE id = ?", (snap_id,)).fetchone()
         return dict(row) if row else None
@@ -233,11 +239,6 @@ def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: 
             for r in rows
         ]
     return {"total": total, "limit": limit, "offset": offset, "items": items}
-
-
-@app.on_event("startup")
-def _startup() -> None:
-    init_db()
 
 
 # ---------------------------------------------------------------- endpoints
