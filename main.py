@@ -3,8 +3,12 @@ import html
 import json
 import os
 import re
+import signal
 import socket
 import sqlite3
+import subprocess
+import threading
+import time
 import uuid
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
@@ -508,13 +512,76 @@ def api_status():
     return get_status()
 
 
-@app.post("/api/shutdown")
-def shutdown():
-    """Останавливает сервер (кнопка на странице /status)."""
-    import threading
+def _process_cmdline(pid: int) -> str:
+    """Command line of another process (used to detect the uvicorn --reload supervisor)."""
+    try:
+        if os.name == "nt":
+            out = subprocess.run(
+                [
+                    "powershell", "-NoProfile", "-Command",
+                    f"(Get-CimInstance Win32_Process -Filter 'ProcessId = {pid}'"
+                    " | Select-Object -ExpandProperty CommandLine)",
+                ],
+                capture_output=True, text=True, timeout=15,
+            ).stdout.strip()
+            return out
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            return f.read().replace(b"\0", b" ").decode(errors="replace")
+    except Exception:
+        return ""
 
-    threading.Timer(0.5, lambda: os._exit(0)).start()
-    return {"status": "stopping", "message": "Server is stopping."}
+
+def _stop_server() -> None:
+    """Stops the whole server.
+
+    Under ``uvicorn --reload`` a plain exit only kills the worker and the
+    reloader supervisor restarts it, so the supervisor process (whose command
+    line contains ``--reload``) must be terminated too. Without ``--reload``
+    the parent is just the console, which must NOT be touched.
+    """
+    try:
+        ppid = os.getppid()
+        if "--reload" in _process_cmdline(ppid):
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(ppid), "/T", "/F"],
+                               capture_output=True, timeout=15)
+            else:
+                os.kill(ppid, signal.SIGTERM)
+            time.sleep(2)
+    except Exception:
+        pass
+    finally:
+        os._exit(0)
+
+
+STOPPED_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Server stopped — Apex snapshots</title>
+<style>
+body { font-family: sans-serif; max-width: 700px; margin: 2em auto; padding: 0 1em; color: #222; }
+.badge { display: inline-block; padding: 0.2em 0.8em; border-radius: 0; color: #fff; background: #dc2626; font-weight: bold; }
+.card { border: 1px solid #ddd; border-radius: 0; padding: 1em; margin-bottom: 1em; background: #fafafa; }
+code { word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Server status</h1>
+<div class="card">
+<p>Status: <span class="badge">Stopped</span></p>
+<p>The server has been stopped. You can close this tab.</p>
+<p>To start it again, run <code>start.bat</code>.</p>
+</div>
+</body>
+</html>"""
+
+
+@app.post("/api/shutdown", response_class=HTMLResponse)
+def shutdown():
+    """Stops the server (button on the /status page)."""
+    threading.Timer(1.0, _stop_server).start()
+    return STOPPED_HTML
 
 
 # Путь для проверки: http://localhost:8000/
