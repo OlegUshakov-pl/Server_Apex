@@ -1,27 +1,29 @@
 @echo off
+chcp 65001 >nul
 title FastAPI Snapshots Server - Install
+cd /d "%~dp0"
 setlocal
 
-REM Использование: install.bat [--recreate] [--help]
+REM Usage: install.bat [--recreate] [--help]
 if "%~1"=="--help" goto :help
 if "%~1"=="-h" goto :help
 if "%~1"=="/?" goto :help
 
 echo ========================================
-echo FastAPI Snapshots Server - Установка
+echo FastAPI Snapshots Server - Installation
 echo ========================================
 echo.
 
-REM Проверка наличия Python 3.14+
+REM Check for Python 3.14+
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo Ошибка: Python не найден. Пожалуйста, установите Python 3.14+
+    echo Error: Python not found. Please install Python 3.14+
     pause
     exit /b 1
 )
 python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 14) else 1)" >nul 2>&1
 if errorlevel 1 (
-    echo Ошибка: требуется Python 3.14+. Текущая версия:
+    echo Error: Python 3.14+ is required. Current version:
     python --version
     pause
     exit /b 1
@@ -30,76 +32,76 @@ echo Python OK:
 python --version
 echo.
 
-REM Пересоздание окружения при флаге --recreate
+REM Recreate the environment with --recreate
 if "%~1"=="--recreate" (
     if exist venv (
-        echo Удаление старого окружения venv...
+        echo Removing old venv environment...
         rmdir /s /q venv
         if errorlevel 1 (
-            echo Ошибка: не удалось удалить папку venv. Закройте процессы, использующие её, и попробуйте снова.
+            echo Error: could not remove the venv folder. Close any processes using it and try again.
             pause
             exit /b 1
         )
     )
 )
 
-REM Создание venv, если его нет
+REM Create venv if missing
 if not exist venv\Scripts\python.exe (
-    echo Создание виртуального окружения...
+    echo Creating virtual environment...
     python -m venv venv
     if errorlevel 1 (
-        echo Ошибка: не удалось создать venv.
+        echo Error: could not create venv.
         pause
         exit /b 1
     )
 ) else (
-    echo Виртуальное окружение уже существует, использую его.
+    echo Virtual environment already exists, using it.
 )
 echo.
 
-REM Обновление pip и установка зависимостей
-echo Обновление pip...
+REM Upgrade pip and install dependencies
+echo Upgrading pip...
 venv\Scripts\python.exe -m pip install --upgrade pip
 if errorlevel 1 (
-    echo Ошибка: не удалось обновить pip.
+    echo Error: could not upgrade pip.
     pause
     exit /b 1
 )
 echo.
 
 if exist requirements.txt (
-    echo Установка зависимостей из requirements.txt...
+    echo Installing dependencies from requirements.txt...
     venv\Scripts\python.exe -m pip install -r requirements.txt
 ) else (
-    echo Установка зависимостей из pyproject.toml...
+    echo Installing dependencies from pyproject.toml...
     venv\Scripts\python.exe -m pip install .
 )
 if errorlevel 1 (
-    echo Ошибка: не удалось установить зависимости.
+    echo Error: could not install dependencies.
     pause
     exit /b 1
 )
 echo.
 
-REM Проверка установки
-echo Проверка установки...
+REM Verify installation
+echo Verifying installation...
 venv\Scripts\python.exe -c "import sys, fastapi, uvicorn, pydantic; print('Python', sys.version.split()[0]); print('fastapi', fastapi.__version__); print('uvicorn', uvicorn.__version__); print('pydantic', pydantic.__version__)"
 if errorlevel 1 (
-    echo Ошибка: проверка не пройдена.
+    echo Error: verification failed.
     pause
     exit /b 1
 )
 echo.
 
 echo ========================================
-echo Установка завершена успешно.
-echo Запуск сервера: start.bat
+echo Installation completed successfully.
+echo Start the server: start.bat
 echo ========================================
 pause
 exit /b 0
 
 :help
-echo Использование: install.bat [--recreate]
-echo   без флагов   - создать venv (если нет) и установить зависимости
-echo   --recreate   - удалить venv и установить заново
+echo Usage: install.bat [--recreate]
+echo   no flags     - create venv (if missing) and install dependencies
+echo   --recreate   - remove venv and reinstall from scratch
 exit /b 0

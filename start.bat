@@ -1,44 +1,48 @@
 @echo off
+chcp 65001 >nul
 title FastAPI Snapshots Server - Start
+cd /d "%~dp0"
 
-REM Проверка наличия Python 3.14+
+REM Check for Python 3.14+
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo Ошибка: Python не найден. Пожалуйста, установите Python 3.14+
+    echo Error: Python not found. Please install Python 3.14+
     pause
     exit /b 1
 )
 python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 14) else 1)" >nul 2>&1
 if errorlevel 1 (
-    echo Ошибка: требуется Python 3.14+. Текущая версия:
+    echo Error: Python 3.14+ is required. Current version:
     python --version
     pause
     exit /b 1
 )
 
 echo ========================================
-echo FastAPI Snapshots Server - Запуск
+echo FastAPI Snapshots Server - Starting
 echo ========================================
 echo.
 
-REM Активация виртуального окружения (если существует)
-if exist venv\Scripts\activate.bat (
-    echo Активация виртуального окружения...
-    call venv\Scripts\activate.bat
-) else (
-    echo Предупреждение: Виртуальное окружение не найдено.
-    echo Создайте его: python -m venv venv ^&^& venv\Scripts\python -m pip install -r requirements.txt
+REM Check virtual environment (use venv python directly,
+REM no dependency on activate or PATH)
+if not exist venv\Scripts\python.exe (
+    echo Warning: virtual environment not found.
+    echo Create it with: install.bat
     pause
     exit /b 1
 )
 
 echo.
-echo Запуск сервера на http://localhost:8000
-echo Нажмите Ctrl+C для остановки сервера
+echo Starting server at http://localhost:8000
+echo Status page will open at http://localhost:8000/status
+echo Press Ctrl+C to stop the server
 echo ========================================
 echo.
 
-REM Запуск uvicorn с параметрами разработки
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+REM Open the status page in the browser once the server is up
+start /min cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8000/status"
+
+REM Start uvicorn in dev mode
+venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 pause
