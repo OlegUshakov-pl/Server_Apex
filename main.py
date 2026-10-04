@@ -268,23 +268,23 @@ def _uptime_str(since: datetime, now: datetime) -> str:
     hours, total = divmod(total, 3600)
     minutes, seconds = divmod(total, 60)
     if days:
-        return f"{days} д {hours} ч {minutes} мин"
+        return f"{days}d {hours}h {minutes}min"
     if hours:
-        return f"{hours} ч {minutes} мин"
+        return f"{hours}h {minutes}min"
     if minutes:
-        return f"{minutes} мин {seconds} с"
-    return f"{seconds} с"
+        return f"{minutes}min {seconds}s"
+    return f"{seconds}s"
 
 
 def _human_size(n: int | None) -> str:
     if n is None:
         return "—"
     size = float(n)
-    for unit in ("Б", "КБ", "МБ", "ГБ"):
-        if size < 1024 or unit == "ГБ":
-            return f"{size:.1f} {unit}" if unit != "Б" else f"{n} Б"
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{n} B"
         size /= 1024
-    return f"{n} Б"
+    return f"{n} B"
 
 
 def get_status(limit: int = STATUS_LIMIT) -> dict:
@@ -327,18 +327,18 @@ def get_status(limit: int = STATUS_LIMIT) -> dict:
 
 
 def render_status_html(st: dict) -> str:
-    """Простая HTML-страница статуса: чистый HTML + минимальный CSS, без зависимостей."""
+    """Simple status HTML page: plain HTML + minimal CSS, no dependencies."""
     if st["total"] > st["shown"]:
-        note = f"<p>Показаны первые {st['shown']} из {st['total']}.</p>"
+        note = f"<p>Showing first {st['shown']} of {st['total']}.</p>"
     else:
         note = ""
     rows = []
     for it in st["items"]:
-        mark = "OK" if it["file_exists"] else "нет файла"
+        mark = "OK" if it["file_exists"] else "missing file"
         rows.append(
             "<tr>"
             f"<td><code>{html.escape(str(it['id']))}</code></td>"
-            f"<td>{html.escape(str(it['url'] or '—'))}</td>"
+            f"<td>{html.escape(str(it['url'] or '-'))}</td>"
             f"<td>{html.escape(str(it['type'] or ''))}</td>"
             f"<td>{html.escape(str(it['created_at']))}</td>"
             f"<td>{_human_size(it['file_size'])}</td>"
@@ -347,47 +347,47 @@ def render_status_html(st: dict) -> str:
         )
     table = (
         "<table><thead><tr>"
-        "<th>ID слепка</th><th>Название / URL</th><th>Тип</th>"
-        "<th>Дата создания</th><th>Размер файла</th><th>Путь к JSON-файлу</th>"
+        "<th>Snapshot ID</th><th>Name / URL</th><th>Type</th>"
+        "<th>Created at</th><th>File size</th><th>JSON file path</th>"
         "</tr></thead><tbody>"
-        + ("".join(rows) if rows else '<tr><td colspan="6">Слепков пока нет.</td></tr>')
+        + ("".join(rows) if rows else '<tr><td colspan="6">No snapshots yet.</td></tr>')
         + "</tbody></table>"
     )
     return f"""<!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Статус сервера — Apex snapshots</title>
+<title>Server status — Apex snapshots</title>
 <style>
 body {{ font-family: sans-serif; max-width: 1100px; margin: 2em auto; padding: 0 1em; color: #222; }}
-.badge {{ display: inline-block; padding: 0.2em 0.8em; border-radius: 1em; color: #fff; background: #16a34a; font-weight: bold; }}
-.card {{ border: 1px solid #ddd; border-radius: 8px; padding: 1em; margin-bottom: 1em; background: #fafafa; }}
+.badge {{ display: inline-block; padding: 0.2em 0.8em; border-radius: 0; color: #fff; background: #16a34a; font-weight: bold; }}
+.card {{ border: 1px solid #ddd; border-radius: 0; padding: 1em; margin-bottom: 1em; background: #fafafa; }}
 table {{ border-collapse: collapse; width: 100%; font-size: 0.9em; }}
 th, td {{ border: 1px solid #ddd; padding: 0.4em 0.6em; text-align: left; vertical-align: top; }}
 th {{ background: #f0f0f0; }}
 code {{ word-break: break-all; }}
-.btn {{ display: inline-block; padding: 0.5em 1em; margin-right: 0.5em; border: 1px solid #999; border-radius: 6px; background: #fff; cursor: pointer; font-size: 1em; text-decoration: none; color: #222; }}
+.btn {{ display: inline-block; padding: 0.5em 1em; margin-right: 0.5em; border: 1px solid #999; border-radius: 0; background: #fff; cursor: pointer; font-size: 1em; text-decoration: none; color: #222; }}
 .btn.danger {{ border-color: #dc2626; color: #dc2626; }}
 .btn:disabled {{ opacity: 0.5; cursor: default; }}
 </style>
 </head>
 <body>
-<h1>Статус сервера</h1>
+<h1>Server status</h1>
 <div class="card">
-<p>Статус: <span class="badge">Running</span></p>
-<p>Время запуска: {html.escape(st['started_at'])}</p>
+<p>Status: <span class="badge">Running</span></p>
+<p>Started at: {html.escape(st['started_at'])}</p>
 <p>Uptime: {html.escape(st['uptime'])}</p>
-<p>IP-адрес сервера: {html.escape(st['server_ip'])}</p>
-<p>Всего слепков: {st['total']}</p>
+<p>Server IP address: {html.escape(st['server_ip'])}</p>
+<p>Total snapshots: {st['total']}</p>
 </div>
 <div class="card">
-<a class="btn" href="/status">&#8635; Обновить</a>
-<button class="btn" disabled title="Сервер уже запущен. Для запуска используйте start.bat">Запустить сервер</button>
-<form method="post" action="/api/shutdown" style="display:inline" onsubmit="return confirm('Остановить сервер? Страница перестанет отвечать.');">
-<button class="btn danger" type="submit">Остановить сервер</button>
+<a class="btn" href="/status">&#8635; Refresh</a>
+<button class="btn" disabled title="Server is already running. Use start.bat to launch it">Start server</button>
+<form method="post" action="/api/shutdown" style="display:inline" onsubmit="return confirm('Stop the server? The page will stop responding.');">
+<button class="btn danger" type="submit">Stop server</button>
 </form>
 </div>
-<h2>Слепки</h2>
+<h2>Snapshots</h2>
 {note}
 {table}
 </body>
@@ -514,7 +514,7 @@ def shutdown():
     import threading
 
     threading.Timer(0.5, lambda: os._exit(0)).start()
-    return {"status": "stopping", "message": "Сервер останавливается."}
+    return {"status": "stopping", "message": "Server is stopping."}
 
 
 # Путь для проверки: http://localhost:8000/
