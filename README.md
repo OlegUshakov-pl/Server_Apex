@@ -1,3 +1,4 @@
+
 # FastAPI Сервер для хранения слепков (Snapshots)
 
 ## Описание
@@ -216,7 +217,3 @@ UPLOAD_DIR = "my_snapshots"  # вместо "uploads"
 | Веб-страница | `/api/add-snap` | `https://example.com/page` |
 | Локальная папка | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
 | Произвольный (ApexShot) | `/api/add-snapshot` | `http://localhost:8000/api/add-snapshot` |
-
-## Лицензия
-
-MIT License
