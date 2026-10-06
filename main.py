@@ -167,8 +167,12 @@ def save_snap(
         "metadata": metadata,
     }
     filepath = UPLOAD_DIR / f"{file_id}.json"
+    # Компактный JSON без отступов: файлы меньше, читаются через API
+    filepath.write_text(
+        json.dumps(snap_content, ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8",
+    )
     with _db() as conn:
-        filepath.write_text(json.dumps(snap_content, ensure_ascii=False, indent=4), encoding="utf-8")
         conn.execute(
             """
             INSERT OR REPLACE INTO snaps
@@ -251,7 +255,9 @@ def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: 
                 "type": r["type"],
                 "url": r["url"],
                 "created_at": r["created_at"],
-                "metadata": json.loads(r["metadata_json"] or "{}"),
+                # Короткий фрагмент вместо полного metadata: лёгкая выдача
+                # для списков/расширения, полный слепок — через /api/snaps/{id}
+                "snippet": " ".join(str(r["search_text"] or "").split())[:200],
             }
             for r in rows
         ]
@@ -486,8 +492,7 @@ async def add_snapshot(payload: dict):
             ] if part
         ) or json.dumps(payload, ensure_ascii=False)[:4000]
         await asyncio.to_thread(
-            save_snap, snap_type, str(source), "", json.dumps(payload, ensure_ascii=False),
-            {"apex": payload}, search_text, file_id,
+            save_snap, snap_type, str(source), "", "", {"apex": payload}, search_text, file_id,
         )
         return {"status": "success", "snap_id": file_id, "message": "Слепок сохранен на сервере."}
     except HTTPException:

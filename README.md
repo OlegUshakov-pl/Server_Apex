@@ -180,6 +180,26 @@ python main.py
 
 FTS5-поиск по слепкам (url + текст). Без `q` — последние слепки.
 
+Возвращает лёгкие item'ы (`id`, `type`, `url`, `created_at`, `snippet` — первые
+200 символов, без полного `metadata`), чтобы списки/расширения грузились быстро:
+
+```json
+{
+  "total": 1, "limit": 20, "offset": 0,
+  "items": [
+    {
+      "id": "snap-...",
+      "type": "apex",
+      "url": "C:/docs/project",
+      "created_at": "2026-10-06T15:03:08Z",
+      "snippet": "hello edge ..."
+    }
+  ]
+}
+```
+
+Полный слепок — через `GET /api/snaps/{snap_id}`.
+
 ### GET /api/snaps/{snap_id}
 
 Получить слепок из SQLite по id.
