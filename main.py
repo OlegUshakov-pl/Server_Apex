@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -41,6 +42,15 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Apex snapshots server", lifespan=lifespan)
+
+# CORS для браузерного расширения (Edge): fetch к localhost из расширения
+# требует разрешающих заголовков. Сервер локальный, поэтому разрешено всё.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------------------------------------------------------------- models
