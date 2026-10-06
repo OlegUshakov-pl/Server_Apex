@@ -28,6 +28,8 @@ DB_PATH = BASE_DIR / "snaps.db"
 STARTED_AT = datetime.now(timezone.utc)
 # Сколько слепков показывать на странице статуса (остальные — только счётчиком)
 STATUS_LIMIT = 200
+# Порт сервера (должен совпадать с --port в start.bat)
+SERVER_PORT = 8000
 
 
 @asynccontextmanager
@@ -258,7 +260,19 @@ def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: 
 
 # ---------------------------------------------------------------- status
 def _local_ip() -> str:
-    """Локальный IP-адрес сервера."""
+    """LAN IP-адрес этой машины (доступный с других компьютеров).
+
+    socket.gethostbyname(socket.gethostname()) часто возвращает адрес
+    виртуального адаптера (VMware/VPN), поэтому определяем IP по маршруту,
+    который используется для исходящего трафика. Пакеты при этом реально
+    не отправляются.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        pass
     try:
         return socket.gethostbyname(socket.gethostname())
     except OSError:
@@ -294,6 +308,7 @@ def _human_size(n: int | None) -> str:
 def get_status(limit: int = STATUS_LIMIT) -> dict:
     """Собирает данные для страницы /status и /api/status."""
     now = datetime.now(timezone.utc)
+    server_ip = _local_ip()
     with _db() as conn:
         total = conn.execute("SELECT COUNT(*) AS c FROM snaps").fetchone()["c"]
         rows = conn.execute(
@@ -323,7 +338,9 @@ def get_status(limit: int = STATUS_LIMIT) -> dict:
         "status": "Running",
         "started_at": STARTED_AT.isoformat().replace("+00:00", "Z"),
         "uptime": _uptime_str(STARTED_AT, now),
-        "server_ip": _local_ip(),
+        "server_ip": server_ip,
+        "server_port": SERVER_PORT,
+        "lan_url": f"http://{server_ip}:{SERVER_PORT}/status",
         "total": total,
         "shown": len(items),
         "items": items,
@@ -382,6 +399,7 @@ code {{ word-break: break-all; }}
 <p>Started at: {html.escape(st['started_at'])}</p>
 <p>Uptime: {html.escape(st['uptime'])}</p>
 <p>Server IP address: {html.escape(st['server_ip'])}</p>
+<p>From another computer: <code>{html.escape(st['lan_url'])}</code></p>
 <p>Total snapshots: {st['total']}</p>
 </div>
 <div class="card">
