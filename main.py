@@ -451,9 +451,9 @@ async def add_snapshot(payload: dict):
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="Ожидается JSON-объект")
         source = (
-            payload.get("directory")
+            payload.get("source_url")
             or payload.get("url")
-            or payload.get("source_url")
+            or payload.get("directory")
             or payload.get("id")
             or ""
         )
