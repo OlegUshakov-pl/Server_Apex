@@ -248,6 +248,23 @@ def delete_snap(snap_id: str) -> bool:
     return gone
 
 
+def prune_missing_files() -> dict:
+    """Удаляет записи, чей JSON-файл в uploads/ отсутствует или пуст (0 байт)."""
+    removed: list[str] = []
+    with _db() as conn:
+        ids = [r["id"] for r in conn.execute("SELECT id FROM snaps").fetchall()]
+    for snap_id in ids:
+        path = UPLOAD_DIR / f"{snap_id}.json"
+        try:
+            empty = not path.is_file() or path.stat().st_size == 0
+        except OSError:
+            empty = True
+        if empty:
+            delete_snap(snap_id)
+            removed.append(snap_id)
+    return {"status": "ok", "removed": len(removed), "ids": removed}
+
+
 def rebuild_fts() -> dict:
     """Пересоздаёт FTS-индекс из таблицы snaps (после ручных правок БД)."""
     with _db() as conn:
@@ -445,7 +462,12 @@ def render_status_html(st: dict) -> str:
         note = ""
     rows = []
     for it in st["items"]:
-        mark = "OK" if it["file_exists"] else "missing file"
+        if not it["file_exists"]:
+            mark = "missing file"
+        elif it["file_size"] == 0:
+            mark = "empty file"
+        else:
+            mark = "OK"
         rows.append(
             "<tr>"
             f"<td><code>{html.escape(str(it['id']))}</code></td>"
@@ -454,16 +476,51 @@ def render_status_html(st: dict) -> str:
             f"<td>{html.escape(str(it['created_at']))}</td>"
             f"<td>{_human_size(it['file_size'])}</td>"
             f"<td><code>{html.escape(str(it['file_path']))}</code> ({mark})</td>"
+            f"<td><button class=\"btn danger\" data-del=\"{html.escape(str(it['id']))}\">Delete</button></td>"
             "</tr>"
         )
     table = (
         "<table><thead><tr>"
         "<th>Snapshot ID</th><th>Name / URL</th><th>Type</th>"
-        "<th>Created at</th><th>File size</th><th>JSON file path</th>"
+        "<th>Created at</th><th>File size</th><th>JSON file path</th><th>Actions</th>"
         "</tr></thead><tbody>"
-        + ("".join(rows) if rows else '<tr><td colspan="6">No snapshots yet.</td></tr>')
+        + ("".join(rows) if rows else '<tr><td colspan="7">No snapshots yet.</td></tr>')
         + "</tbody></table>"
     )
+    script = """
+<script>
+document.querySelectorAll('[data-del]').forEach(function (btn) {
+    btn.addEventListener('click', async function () {
+        const id = btn.dataset.del;
+        if (!confirm('Delete snapshot ' + id + '? This removes the DB record and the JSON file.')) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch('/api/snaps/' + encodeURIComponent(id), { method: 'DELETE' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            location.reload();
+        } catch (e) {
+            btn.disabled = false;
+            alert('Delete failed: ' + e.message);
+        }
+    });
+});
+const pruneBtn = document.getElementById('pruneBtn');
+if (pruneBtn) {
+    pruneBtn.addEventListener('click', async function () {
+        if (!confirm('Delete all records whose JSON file is missing or empty?')) return;
+        pruneBtn.disabled = true;
+        try {
+            const res = await fetch('/api/prune-missing', { method: 'POST' });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            location.reload();
+        } catch (e) {
+            pruneBtn.disabled = false;
+            alert('Prune failed: ' + e.message);
+        }
+    });
+}
+</script>
+"""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -498,10 +555,12 @@ code {{ word-break: break-all; }}
 <form method="post" action="/api/shutdown" style="display:inline" onsubmit="return confirm('Stop the server? The page will stop responding.');">
 <button class="btn danger" type="submit">Stop server</button>
 </form>
+<button class="btn danger" id="pruneBtn">Remove missing/empty files</button>
 </div>
 <h2>Snapshots</h2>
 {note}
 {table}
+{script}
 </body>
 </html>"""
 
@@ -619,6 +678,12 @@ def remove_snap(snap_id: str):
     return {"status": "success", "snap_id": snap_id}
 
 
+@app.post("/api/prune-missing")
+def api_prune_missing():
+    """Удаляет записи с отсутствующими или пустыми JSON-файлами в uploads/."""
+    return prune_missing_files()
+
+
 @app.post("/api/rebuild-fts")
 def api_rebuild_fts():
     """Пересоздаёт FTS-индекс из таблицы snaps (после ручных правок БД)."""
@@ -719,7 +784,8 @@ def root():
             "/api/add-folder-snap": "Сохраняет слепок локальной папки",
             "/api/add-snapshot": "Сохраняет произвольный слепок (ApexShot)",
             "/api/search?q=...": "FTS5-поиск по слепкам",
-            "/api/snaps/{snap_id}": "Получить слепок по id",
+            "/api/snaps/{snap_id}": "Получить слепок по id (DELETE — удалить)",
+            "/api/prune-missing": "Удалить записи с отсутствующими/пустыми файлами (POST)",
             "/status": "HTML-страница состояния сервера",
             "/api/status": "Состояние сервера в JSON",
         },
