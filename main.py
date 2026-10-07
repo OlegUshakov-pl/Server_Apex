@@ -140,13 +140,29 @@ def _db() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def _fts_query(query: str) -> str:
-    parts = []
+def _fts_tokens(query: str) -> list[str]:
+    tokens: list[str] = []
     for token in re.split(r"\s+", (query or "").strip()):
-        cleaned = token.replace('"', " ").strip()
-        if cleaned:
-            parts.append(f'"{cleaned}"')
-    return " AND ".join(parts)
+        # Убираем кавычки и спецсимволы FTS5, оставляем буквы/цифры
+        cleaned = token.replace('"', " ").replace("'", " ").strip()
+        cleaned = re.sub(r"[()*^:;+\-]", " ", cleaned).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if len(cleaned) >= 2:
+            tokens.append(cleaned)
+    # Если запрос состоял только из коротких токенов (напр. "s"),
+    # оставляем их как есть, иначе поиск вернул бы всё/ничего
+    if not tokens:
+        single = (query or "").strip().replace('"', "").strip()
+        if single:
+            tokens = [single]
+    return tokens
+
+
+def _fts_query(query: str) -> str:
+    # Поиск по ЛЮБОМУ слову (OR), а не по всем сразу (AND).
+    # Раньше "CRM ERP" требовал оба слова и часто давал 0,
+    # а LIKE-фолбэк искал точную фразу целиком.
+    return " OR ".join(f'"{t}"' for t in _fts_tokens(query))
 
 
 def save_snap(
@@ -215,12 +231,52 @@ def get_snap(snap_id: str) -> dict | None:
         return dict(row) if row else None
 
 
+def delete_snap(snap_id: str) -> bool:
+    """Удаляет слепок из SQLite + FTS + файл. Возвращает True если что-то было."""
+    with _db() as conn:
+        cur = conn.execute("DELETE FROM snaps WHERE id = ?", (snap_id,))
+        gone = (cur.rowcount or 0) > 0
+        try:
+            if fts_available(conn):
+                conn.execute("DELETE FROM snaps_fts WHERE snap_id = ?", (snap_id,))
+        except sqlite3.OperationalError:
+            pass
+    try:
+        (UPLOAD_DIR / f"{snap_id}.json").unlink(missing_ok=True)
+    except OSError:
+        pass
+    return gone
+
+
+def rebuild_fts() -> dict:
+    """Пересоздаёт FTS-индекс из таблицы snaps (после ручных правок БД)."""
+    with _db() as conn:
+        if not fts_available(conn):
+            return {"status": "fts-unavailable"}
+        try:
+            conn.execute("DELETE FROM snaps_fts")
+        except sqlite3.OperationalError as e:
+            return {"status": "error", "detail": str(e)}
+        rows = conn.execute("SELECT id, url, search_text FROM snaps").fetchall()
+        for r in rows:
+            conn.execute(
+                "INSERT INTO snaps_fts (snap_id, url, search_text) VALUES (?, ?, ?)",
+                (r["id"], r["url"], r["search_text"]),
+            )
+        return {"status": "ok", "indexed": len(rows)}
+
+
 def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: int = 0) -> dict:
     limit = max(1, min(100, limit))
     offset = max(0, offset)
+    query = (query or "").strip()
     with _db() as conn:
         params: list[Any] = []
-        if query.strip() and fts_available(conn):
+        rows: list[Any] = []
+        total = 0
+        fts_tried = False
+        if query and fts_available(conn):
+            fts_tried = True
             match = _fts_query(query)
             sql = (
                 "SELECT s.* FROM snaps s JOIN snaps_fts f ON f.snap_id = s.id "
@@ -236,23 +292,41 @@ def search_snaps(query: str = "", snap_type: str = "", limit: int = 20, offset: 
                 rows = conn.execute(sql, params).fetchall()
             except sqlite3.OperationalError:
                 rows = []
-            count_sql = (
-                "SELECT COUNT(*) AS c FROM snaps s JOIN snaps_fts f ON f.snap_id = s.id "
-                "WHERE snaps_fts MATCH ?" + (" AND s.type = ?" if snap_type else "")
-            )
-            try:
-                total = conn.execute(count_sql, params[:-2]).fetchone()["c"]
-            except sqlite3.OperationalError:
-                total = 0
-        else:
+                fts_tried = False  # синтаксис FTS не переварил — уйдём в LIKE
+            else:
+                count_sql = (
+                    "SELECT COUNT(*) AS c FROM snaps s JOIN snaps_fts f ON f.snap_id = s.id "
+                    "WHERE snaps_fts MATCH ?" + (" AND s.type = ?" if snap_type else "")
+                )
+                try:
+                    total = conn.execute(count_sql, params[:-2]).fetchone()["c"]
+                except sqlite3.OperationalError:
+                    total = 0
+            # Если FTS ничего не нашёл (строгий поиск), пробуем мягкий LIKE по любым словам —
+            # это и есть "поиск по смыслу/словам", а не "всё подряд"
+            if fts_tried and not rows:
+                fts_tried = False
+        if not fts_tried:
+            params = []
             clauses: list[str] = []
             if snap_type:
                 clauses.append("type = ?")
                 params.append(snap_type)
-            if query.strip():
-                clauses.append("(url LIKE ? OR search_text LIKE ?)")
-                like = f"%{query.strip()}%"
-                params += [like, like]
+            if query:
+                # Любое слово из query в url или search_text (case-insensitive, включая кириллицу)
+                like_clauses: list[str] = []
+                like_params: list[Any] = []
+                for tok in _fts_tokens(query):
+                    like_clauses.append("(LOWER(url) LIKE LOWER(?) ESCAPE '\\' OR LOWER(search_text) LIKE LOWER(?) ESCAPE '\\')")
+                    like = f"%{tok}%"
+                    like_params += [like, like]
+                if like_clauses:
+                    clauses.append("(" + " OR ".join(like_clauses) + ")")
+                    params += like_params
+                else:
+                    clauses.append("(LOWER(url) LIKE LOWER(?) ESCAPE '\\' OR LOWER(search_text) LIKE LOWER(?) ESCAPE '\\')")
+                    like = f"%{query}%"
+                    params += [like, like]
             where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
             total = conn.execute(f"SELECT COUNT(*) AS c FROM snaps {where}", params).fetchone()["c"]
             rows = conn.execute(
@@ -530,7 +604,25 @@ def search(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
-    return search_snaps(query=q, snap_type=type, limit=limit, offset=offset)
+    # Лог в консоль uvicorn: видно, что реально прислало расширение
+    # (пустой q = вернётся всё; это нормально для ?q без значения)
+    result = search_snaps(query=q, snap_type=type, limit=limit, offset=offset)
+    print(f'SEARCH q={q!r} -> total={result.get("total")} items={len(result.get("items", []))}')
+    return result
+
+
+@app.delete("/api/snaps/{snap_id}")
+def remove_snap(snap_id: str):
+    """Удаляет слепок везде (SQLite + FTS + файл в uploads/)."""
+    if not delete_snap(snap_id):
+        raise HTTPException(status_code=404, detail=f"Слепок {snap_id} не найден")
+    return {"status": "success", "snap_id": snap_id}
+
+
+@app.post("/api/rebuild-fts")
+def api_rebuild_fts():
+    """Пересоздаёт FTS-индекс из таблицы snaps (после ручных правок БД)."""
+    return rebuild_fts()
 
 
 # Путь: http://localhost:8000/status — HTML-страница состояния сервера
