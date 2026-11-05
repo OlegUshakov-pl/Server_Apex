@@ -33,16 +33,16 @@ if not exist venv\Scripts\python.exe (
 )
 
 echo.
-echo Starting server at http://localhost:8000
-echo Status page will open at http://localhost:8000/status
+echo Starting server at http://localhost:8080
+echo Status page will open at http://localhost:8080/status
 echo Press Ctrl+C to stop the server
 echo ========================================
 echo.
 
 REM Open the status page in the browser once the server is up
-start /min cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8000/status"
+start /min cmd /c "timeout /t 4 /nobreak >nul & start http://localhost:8080/status"
 
 REM Start uvicorn in dev mode
-venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8080
 
 pause

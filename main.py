@@ -30,7 +30,7 @@ STARTED_AT = datetime.now(timezone.utc)
 # Сколько слепков показывать на странице статуса (остальные — только счётчиком)
 STATUS_LIMIT = 200
 # Порт сервера (должен совпадать с --port в start.bat)
-SERVER_PORT = 8000
+SERVER_PORT = 8080
 
 
 @asynccontextmanager
@@ -566,7 +566,7 @@ code {{ word-break: break-all; }}
 
 
 # ---------------------------------------------------------------- endpoints
-# Путь: http://localhost:8000/api/add-snap (веб-страницы)
+# Путь: http://localhost:8080/api/add-snap (веб-страницы)
 @app.post("/api/add-snap")
 async def add_snap(snap: WebSnapData):
     """Сохраняет слепок веб-страницы"""
@@ -588,7 +588,7 @@ async def add_snap(snap: WebSnapData):
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения: {e}")
 
 
-# Путь: http://localhost:8000/api/add-folder-snap (локальные папки)
+# Путь: http://localhost:8080/api/add-folder-snap (локальные папки)
 @app.post("/api/add-folder-snap")
 async def add_folder_snap(snap: FolderSnapData):
     """Сохраняет слепок локальной папки"""
@@ -610,7 +610,7 @@ async def add_folder_snap(snap: FolderSnapData):
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения: {e}")
 
 
-# Путь: http://localhost:8000/api/add-snapshot (произвольный JSON, напр. из ApexShot)
+# Путь: http://localhost:8080/api/add-snapshot (произвольный JSON, напр. из ApexShot)
 @app.post("/api/add-snapshot")
 async def add_snapshot(payload: dict):
     """Сохраняет произвольный слепок (ApexShot Send шлёт сюда весь JSON)."""
@@ -690,13 +690,13 @@ def api_rebuild_fts():
     return rebuild_fts()
 
 
-# Путь: http://localhost:8000/status — HTML-страница состояния сервера
+# Путь: http://localhost:8080/status — HTML-страница состояния сервера
 @app.get("/status", response_class=HTMLResponse)
 def status_page():
     return render_status_html(get_status())
 
 
-# Путь: http://localhost:8000/api/status — то же самое в JSON
+# Путь: http://localhost:8080/api/status — то же самое в JSON
 @app.get("/api/status")
 def api_status():
     return get_status()
@@ -774,7 +774,7 @@ def shutdown():
     return STOPPED_HTML
 
 
-# Путь для проверки: http://localhost:8000/
+# Путь для проверки: http://localhost:8080/
 @app.get("/")
 def root():
     return {

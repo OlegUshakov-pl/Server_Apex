@@ -1,93 +1,93 @@
 
-# FastAPI Сервер для хранения слепков (Snapshots)
+# FastAPI Server for Storing Snapshots
 
-## Описание
+## Overview
 
-Серверный компонент системы, который принимает и хранит данные "слепков" от приложения ApexShot (FastAPI):
-- **ApexShot**: кнопка «Послать» на странице Search (`POST /api/snapshots/{id}/send`) отправляет JSON слепка на `POST /api/add-snapshot` (Server URL задаётся в ApexShot → Settings → Server URL, например `http://localhost:8000/api/add-snapshot`)
-- **Совместимость**: эндпоинты `/api/add-snap` (веб-страницы) и `/api/add-folder-snap` (папки) оставлены для обратной совместимости
+Server-side component of the system that receives and stores "snapshot" data from the ApexShot application (FastAPI):
+- **ApexShot**: the "Send" button on the Search page (`POST /api/snapshots/{id}/send`) sends the snapshot JSON to `POST /api/add-snapshot` (the Server URL is configured in ApexShot → Settings → Server URL, e.g. `http://localhost:8080/api/add-snapshot`)
+- **Compatibility**: the `/api/add-snap` (web pages) and `/api/add-folder-snap` (folders) endpoints are kept for backward compatibility
 
-## Установка
+## Installation
 
-### Требования
+### Requirements
 
 - Python 3.14+
 - pip
-- SQLite с FTS5 (входит в стандартную сборку Python)
+- SQLite with FTS5 (included in the standard Python build)
 
-### Установка зависимостей
+### Installing dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Запуск сервера
+### Starting the server
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-Или просто:
+Or simply:
 
 ```bash
 python main.py
 ```
 
-Сервер будет доступен по адресу `http://localhost:8000`
+The server will be available at `http://localhost:8080`
 
 ## API
 
 ### GET /
 
-Проверка работы сервера.
+Server health check.
 
-**Ответ:**
+**Response:**
 ```json
 {
   "message": "Server is running.",
   "endpoints": {
-    "/api/add-snap": "Сохраняет слепок веб-страницы",
-    "/api/add-folder-snap": "Сохраняет слепок локальной папки",
-    "/api/add-snapshot": "Сохраняет произвольный слепок (ApexShot)",
-    "/api/search?q=...": "FTS5-поиск по слепкам",
-    "/api/snaps/{snap_id}": "Получить слепок по id"
+    "/api/add-snap": "Stores a web page snapshot",
+    "/api/add-folder-snap": "Stores a local folder snapshot",
+    "/api/add-snapshot": "Stores an arbitrary snapshot (ApexShot)",
+    "/api/search?q=...": "FTS5 search across snapshots",
+    "/api/snaps/{snap_id}": "Get a snapshot by id"
   }
 }
 ```
 
 ### POST /api/add-snap
 
-Сохраняет новый слепок **веб-страницы**.
+Stores a new **web page** snapshot.
 
-**Запрос (веб-страница):**
+**Request (web page):**
 ```json
 {
   "source_url": "https://example.com/page",
   "thumbnail_base64": "data:image/png;base64,iVBOR...",
-  "binary_data": "{\"type\": \"text\", \"content\": \"Привет\"}",
+  "binary_data": "{\"type\": \"text\", \"content\": \"Hello\"}",
   "metadata_ai": {
     "tags": ["news", "article"],
     "sentiment": 0.8,
-    "summary": "Краткое описание...",
+    "summary": "Short description...",
     "category": "tech"
   }
 }
 ```
 
-**Успешный ответ:**
+**Success response:**
 ```json
 {
   "status": "success",
   "snap_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "message": "Веб-слепок успешно сохранен на сервере."
+  "message": "Web snapshot has been successfully saved on the server."
 }
 ```
 
 ### POST /api/add-folder-snap
 
-Сохраняет новый слепок **локальной папки**.
+Stores a new **local folder** snapshot.
 
-**Запрос (папка):**
+**Request (folder):**
 ```json
 {
   "source_url": "file:///C:/Users/You/Documents/my-folder",
@@ -96,7 +96,7 @@ python main.py
   "metadata_ai": {
     "tags": ["folder", "documents"],
     "sentiment": 0.5,
-    "summary": "Папка с документами",
+    "summary": "Folder with documents",
     "category": "other",
     "files": [
       "report.pdf",
@@ -107,22 +107,22 @@ python main.py
 }
 ```
 
-**Успешный ответ:**
+**Success response:**
 ```json
 {
   "status": "success",
   "snap_id": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
-  "message": "Слепок папки успешно сохранен на сервере."
+  "message": "Folder snapshot has been successfully saved on the server."
 }
 ```
 
-## Структура данных
+## Data structure
 
-Каждый слепок сохраняется в отдельный JSON-файл с именем `uuid.json` в папке `uploads/`
-и дублируется в SQLite (`snaps.db`): таблица `snaps` + FTS5-индекс `snaps_fts` по полям
-`snap_id, url, search_text`.
+Each snapshot is saved as a separate JSON file named `uuid.json` in the `uploads/` folder
+and is also stored in SQLite (`snaps.db`): the `snaps` table plus an FTS5 index `snaps_fts`
+over the `snap_id, url, search_text` fields.
 
-### Веб-страница:
+### Web page:
 ```json
 {
   "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
@@ -133,13 +133,13 @@ python main.py
   "metadata": {
     "tags": ["news", "article"],
     "sentiment": 0.8,
-    "summary": "Краткое описание...",
+    "summary": "Short description...",
     "category": "tech"
   }
 }
 ```
 
-### Локальная папка:
+### Local folder:
 ```json
 {
   "id": "b2c3d4e5-f6g7-8901-bcde-fg2345678901",
@@ -150,7 +150,7 @@ python main.py
   "metadata": {
     "tags": ["folder", "documents"],
     "sentiment": 0.5,
-    "summary": "Папка с документами",
+    "summary": "Folder with documents",
     "category": "other",
     "files": [
       "report.pdf",
@@ -163,25 +163,25 @@ python main.py
 
 ### POST /api/add-snapshot
 
-Принимает произвольный JSON (сюда шлёт кнопка Send из ApexShot — поле Server URL).
+Accepts arbitrary JSON (this is where the Send button in ApexShot sends data — the Server URL field).
 
-**Запрос:** любой JSON-объект слепка ApexShot (`id`, `directory`, `title`, `summary`, `tags`, …).
+**Request:** any ApexShot snapshot JSON object (`id`, `directory`, `title`, `summary`, `tags`, ...).
 
-**Успешный ответ:**
+**Success response:**
 ```json
 {
   "status": "success",
   "snap_id": "snap-...",
-  "message": "Слепок сохранен на сервере."
+  "message": "Snapshot has been saved on the server."
 }
 ```
 
 ### GET /api/search?q=...&type=...&limit=20&offset=0
 
-FTS5-поиск по слепкам (url + текст). Без `q` — последние слепки.
+FTS5 search across snapshots (url + text). Without `q` — the latest snapshots.
 
-Возвращает лёгкие item'ы (`id`, `type`, `url`, `created_at`, `snippet` — первые
-200 символов, без полного `metadata`), чтобы списки/расширения грузились быстро:
+Returns lightweight items (`id`, `type`, `url`, `created_at`, `snippet` — the first
+200 characters, without the full `metadata`) so that lists/extensions load quickly:
 
 ```json
 {
@@ -198,58 +198,58 @@ FTS5-поиск по слепкам (url + текст). Без `q` — посл�
 }
 ```
 
-Полный слепок — через `GET /api/snaps/{snap_id}`.
+The full snapshot is available via `GET /api/snaps/{snap_id}`.
 
 ### GET /api/snaps/{snap_id}
 
-Получить слепок из SQLite по id.
+Get a snapshot from SQLite by id.
 
 ### DELETE /api/snaps/{snap_id}
 
-Удаляет слепок целиком: запись в SQLite, запись в FTS-индексе и JSON-файл в `uploads/`.
-Возвращает 404, если слепка нет.
+Deletes the snapshot entirely: the SQLite record, the FTS index entry, and the JSON file in `uploads/`.
+Returns 404 if the snapshot does not exist.
 
 ### POST /api/prune-missing
 
-Удаляет все записи, чей JSON-файл в `uploads/` отсутствует или пуст (0 байт).
+Deletes all records whose JSON file in `uploads/` is missing or empty (0 bytes).
 
-**Ответ:**
+**Response:**
 ```json
 { "status": "ok", "removed": 2, "ids": ["snap-...", "snap-..."] }
 ```
 
-Кнопки `Delete` (в каждой строке) и `Remove missing/empty files` есть на странице `/status`.
+The `Delete` buttons (in each row) and `Remove missing/empty files` are available on the `/status` page.
 
-## Структура проекта
+## Project structure
 
 ```
 server_project/
-├── main.py          # Основной файл приложения FastAPI + SQLite FTS5
-├── snaps.db         # SQLite-база слепков (создаётся автоматически)
-├── uploads/         # Папка для хранения слепков (создаётся автоматически)
-└── README.md        # Документация
+├── main.py          # Main FastAPI + SQLite FTS5 application file
+├── snaps.db         # SQLite snapshot database (created automatically)
+├── uploads/         # Folder for storing snapshots (created automatically)
+└── README.md        # Documentation
 ```
 
-## Настройка
+## Configuration
 
-### Порт сервера
+### Server port
 
-Измените порт в запуске:
+Change the port in the startup command:
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8001
+uvicorn main:app --reload --host 0.0.0.0 --port 8081
 ```
 
-### Папка для хранения
+### Storage folder
 
-По умолчанию используется `uploads/`. Измените переменную `UPLOAD_DIR` в `main.py`:
+By default, `uploads/` is used. Change the `UPLOAD_DIR` variable in `main.py`:
 ```python
-UPLOAD_DIR = "my_snapshots"  # вместо "uploads"
+UPLOAD_DIR = "my_snapshots"  # instead of "uploads"
 ```
 
-## Поддерживаемые типы слепков
+## Supported snapshot types
 
-| Тип | Endpoint | Пример URL |
-|-----|----------|------------|
-| Веб-страница | `/api/add-snap` | `https://example.com/page` |
-| Локальная папка | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
-| Произвольный (ApexShot) | `/api/add-snapshot` | `http://localhost:8000/api/add-snapshot` |
+| Type | Endpoint | Example URL |
+|------|----------|-------------|
+| Web page | `/api/add-snap` | `https://example.com/page` |
+| Local folder | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
+| Arbitrary (ApexShot) | `/api/add-snapshot` | `http://localhost:8080/api/add-snapshot` |
