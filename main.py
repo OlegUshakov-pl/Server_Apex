@@ -670,6 +670,84 @@ def search(
     return result
 
 
+def _extract_confidence(snap_row: dict | None) -> float | None:
+    """Достаёт общую confidence слепка из metadata (с учётом обёрток)."""
+    if not snap_row:
+        return None
+    meta = snap_row.get("metadata")
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (json.JSONDecodeError, ValueError):
+            meta = None
+    if not isinstance(meta, dict):
+        try:
+            meta = json.loads(snap_row.get("metadata_json") or "{}")
+        except (json.JSONDecodeError, ValueError):
+            meta = {}
+    if not isinstance(meta, dict):
+        return None
+    # Снимаем обёртки apex / metadata_ai / metadata
+    inner = meta
+    for _ in range(4):
+        if isinstance(inner, dict):
+            for key in ("apex", "metadata_ai", "metadata"):
+                if isinstance(inner.get(key), dict):
+                    inner = inner[key]
+                    break
+            else:
+                break
+        else:
+            break
+    for obj in (inner, meta):
+        if isinstance(obj, dict):
+            v = obj.get("confidence")
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                return float(v)
+    return None
+
+
+@app.post("/api/search")
+async def search_post(payload: dict = None):
+    """Поиск для расширения ApexShot: POST {"query": ..., "top_k": ...}."""
+    payload = payload or {}
+    query = str(payload.get("query") or payload.get("q") or payload.get("text") or "")
+    raw_limit = payload.get("top_k", payload.get("limit", 20))
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(100, limit))
+    raw_offset = payload.get("offset", 0)
+    try:
+        offset = int(raw_offset)
+    except (TypeError, ValueError):
+        offset = 0
+    offset = max(0, offset)
+    result = await asyncio.to_thread(search_snaps, query=query, limit=limit, offset=offset)
+    items = []
+    for it in result.get("items", []):
+        url = it.get("url") or ""
+        snap = get_snap(it.get("id") or "")
+        confidence = _extract_confidence(snap)
+        items.append(
+            {
+                "id": it.get("id"),
+                "title": url or "Слепок",
+                "score": 0.0,
+                "confidence": confidence,
+                "matched_fields": "full-text",
+                "snippet": it.get("snippet", ""),
+                "source_url": url,
+                "type": it.get("type"),
+                "created_at": it.get("created_at"),
+                "degraded": False,
+            }
+        )
+    print(f'SEARCH(POST) q={query!r} -> total={result.get("total")} items={len(items)}')
+    return {"total": result.get("total", len(items)), "items": items, "degraded": False}
+
+
 @app.delete("/api/snaps/{snap_id}")
 def remove_snap(snap_id: str):
     """Удаляет слепок везде (SQLite + FTS + файл в uploads/)."""
@@ -699,6 +777,12 @@ def status_page():
 # Путь: http://localhost:8080/api/status — то же самое в JSON
 @app.get("/api/status")
 def api_status():
+    return get_status()
+
+
+@app.get("/api/health")
+def api_health():
+    """Health-check для браузерного расширения ApexShot (совместимость)."""
     return get_status()
 
 

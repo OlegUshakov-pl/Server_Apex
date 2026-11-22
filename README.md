@@ -1,4 +1,4 @@
-
+![server](./images/server.png)
 # FastAPI Server for Storing Snapshots
 
 ## Overview
