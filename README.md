@@ -253,3 +253,13 @@ UPLOAD_DIR = "my_snapshots"  # instead of "uploads"
 | Web page | `/api/add-snap` | `https://example.com/page` |
 | Local folder | `/api/add-folder-snap` | `file:///C:/Users/You/Documents/my-folder` |
 | Arbitrary (ApexShot) | `/api/add-snapshot` | `http://localhost:8080/api/add-snapshot` |
+
+## License
+
+This project is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0-only).
+See the [LICENSE](LICENSE) file for the full text.
+
+If you run a modified version of this server as a network service, the AGPL requires you to make
+the source code of your modified version available to its users.
+
+Copyright (C) 2026 Oleg Ushakov
